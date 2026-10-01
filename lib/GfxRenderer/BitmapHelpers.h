@@ -20,6 +20,51 @@ struct GrayPlanePixel {
   bool black;
 };
 
+inline uint8_t applyJpegQualityTone(uint8_t gray, uint8_t leftGray, uint8_t rightGray, int x, int y) {
+  constexpr int solidBlackMax = 12;
+  constexpr int solidWhiteMin = 218;
+  constexpr int shadowContrastPercent = 122;
+  constexpr int contrastPercent = 162;
+  constexpr int sharpenThreshold = 3;
+  constexpr int sharpenPercent = 105;
+  constexpr int sharpenMax = 38;
+  constexpr int microDither = 8;
+
+  if (gray <= solidBlackMax) return 0;
+  if (gray >= solidWhiteMin) return 255;
+
+  const int detail = static_cast<int>(gray) - (static_cast<int>(leftGray) + rightGray) / 2;
+  int sharpenedGray = gray;
+  const int absDetail = detail < 0 ? -detail : detail;
+  if (absDetail > sharpenThreshold) {
+    int boost = (detail * sharpenPercent) / 100;
+    if (boost < -sharpenMax) boost = -sharpenMax;
+    if (boost > sharpenMax) boost = sharpenMax;
+    sharpenedGray += boost;
+    if (sharpenedGray < 0) sharpenedGray = 0;
+    if (sharpenedGray > 255) sharpenedGray = 255;
+  }
+
+  int tone;
+  if (sharpenedGray < 128) {
+    tone = ((sharpenedGray - 64) * shadowContrastPercent) / 100 + 64;
+  } else {
+    tone = ((sharpenedGray - 128) * contrastPercent) / 100 + 128;
+  }
+  if (tone <= 8) return 0;
+  if (tone >= 238) return 255;
+
+  if (gray > solidBlackMax + 10 && gray < solidWhiteMin - 10) {
+    const int latticeA = ((x * 13 + y * 7 + ((x ^ y) * 3)) & 15) - 8;
+    const int latticeB = (((x + y * 3) * 5) & 7) - 4;
+    tone += ((latticeA + latticeB) * microDither) / 12;
+  }
+
+  if (tone < 0) tone = 0;
+  if (tone > 255) tone = 255;
+  return static_cast<uint8_t>(tone);
+}
+
 // Levels: black, dark, light, white. drawPixel(true) clears a framebuffer bit.
 constexpr GrayPlanePixel grayPlanePixel(uint8_t level, bool msb, bool absolute) {
   if (absolute) return {true, !(level == 3 || level == (msb ? 2 : 1))};
@@ -358,4 +403,64 @@ class FloydSteinbergDitherer {
   std::unique_ptr<int16_t[]> errorRows;
   int16_t* errorCurRow = nullptr;
   int16_t* errorNextRow = nullptr;
+};
+
+class QualityFourToneDitherer {
+ public:
+  explicit QualityFourToneDitherer(int width) {
+    if (width <= 0) return;
+    rowSize = static_cast<size_t>(width) + 4;
+    if (rowSize > SIZE_MAX / (2 * sizeof(int16_t))) return;
+    width_ = width;
+    errorRows = makeUniqueNoThrow<int16_t[]>(rowSize * 2);
+    if (errorRows) {
+      currentRow = errorRows.get();
+      nextRowBuffer = currentRow + rowSize;
+    }
+  }
+
+  QualityFourToneDitherer(const QualityFourToneDitherer&) = delete;
+  QualityFourToneDitherer& operator=(const QualityFourToneDitherer&) = delete;
+
+  bool isValid() const { return errorRows != nullptr; }
+
+  static uint8_t quantize(int gray) {
+    if (gray < 20) return 0;
+    if (gray < 158) return 1;
+    if (gray < 248) return 2;
+    return 3;
+  }
+
+  uint8_t processPixel(int gray, int x) {
+    if (x < 0 || x >= width_ || !isValid()) return quantize(gray);
+
+    int adjusted = gray + currentRow[x + 2];
+    if (adjusted < 0) adjusted = 0;
+    if (adjusted > 255) adjusted = 255;
+
+    const uint8_t level = quantize(adjusted);
+    const int error = adjusted - static_cast<int>(level) * 85;
+    if (error == 0) return level;
+
+    if (x + 1 < width_) currentRow[x + 3] += static_cast<int16_t>((error * 7) / 16);
+    if (x > 0) nextRowBuffer[x + 1] += static_cast<int16_t>((error * 3) / 16);
+    nextRowBuffer[x + 2] += static_cast<int16_t>((error * 5) / 16);
+    if (x + 1 < width_) nextRowBuffer[x + 3] += static_cast<int16_t>(error / 16);
+    return level;
+  }
+
+  void nextRow() {
+    if (!isValid()) return;
+    int16_t* previous = currentRow;
+    currentRow = nextRowBuffer;
+    nextRowBuffer = previous;
+    memset(nextRowBuffer, 0, rowSize * sizeof(int16_t));
+  }
+
+ private:
+  int width_ = 0;
+  size_t rowSize = 0;
+  std::unique_ptr<int16_t[]> errorRows;
+  int16_t* currentRow = nullptr;
+  int16_t* nextRowBuffer = nullptr;
 };

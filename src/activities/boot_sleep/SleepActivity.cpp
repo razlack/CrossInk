@@ -34,6 +34,7 @@
 #include "AppVersion.h"
 #include "CrossPointSettings.h"
 #include "CrossPointState.h"
+#include "Epub/converters/ImageDecoderFactory.h"
 #include "ImageFolderIndex.h"
 #include "RecentBooksStore.h"
 #include "SleepCoverAssets.h"
@@ -52,6 +53,62 @@ constexpr int sleepBuildInfoSideMargin = 20;
 
 bool sleepCoverFilterInvertsGeneratedScreen() {
   return SETTINGS.sleepScreenCoverFilter == CrossPointSettings::SLEEP_SCREEN_COVER_FILTER::INVERTED_BLACK_AND_WHITE;
+}
+
+bool renderJpegSleepCover(const std::string& imagePath, const bool cropped, GfxRenderer& renderer) {
+  ImageToFramebufferDecoder* decoder = ImageDecoderFactory::getDecoder(imagePath);
+  ImageDimensions dimensions{};
+  if (!decoder || !decoder->getDimensions(imagePath, dimensions) || dimensions.width <= 0 || dimensions.height <= 0) {
+    return false;
+  }
+
+  const int screenWidth = renderer.getScreenWidth();
+  const int screenHeight = renderer.getScreenHeight();
+  const float scaleX = static_cast<float>(screenWidth) / dimensions.width;
+  const float scaleY = static_cast<float>(screenHeight) / dimensions.height;
+  const float scale = cropped ? std::max(scaleX, scaleY) : std::min(scaleX, scaleY);
+  const int outputWidth = std::max(1, static_cast<int>(std::lround(dimensions.width * scale)));
+  const int outputHeight = std::max(1, static_cast<int>(std::lround(dimensions.height * scale)));
+
+  RenderConfig config;
+  config.x = (screenWidth - outputWidth) / 2;
+  config.y = (screenHeight - outputHeight) / 2;
+  config.maxWidth = outputWidth;
+  config.maxHeight = outputHeight;
+  config.useGrayscale = true;
+  config.useDithering = true;
+  config.useJpegQualityTone = true;
+  config.useExactDimensions = true;
+
+  const bool absolute = renderer.supportsAbsoluteGrayscale();
+  const bool direct = absolute && renderer.supportsDirectGrayscale();
+  renderer.clearScreen(0xFF);
+  if (absolute) {
+    renderer.displayBuffer(HalDisplay::HALF_REFRESH);
+    const bool baseReady = direct ? renderer.displayDirectGrayscaleBase(HalDisplay::FAST_REFRESH)
+                                  : renderer.displayAbsoluteGrayscaleBase(HalDisplay::FAST_REFRESH);
+    if (!baseReady) return false;
+  } else {
+    if (!decoder->decodeToFramebuffer(imagePath, renderer, config)) return false;
+    renderer.displayGrayscaleBase(HalDisplay::HALF_REFRESH);
+  }
+
+  for (const auto mode : {GfxRenderer::GRAYSCALE_LSB, GfxRenderer::GRAYSCALE_MSB}) {
+    renderer.clearScreen(absolute ? 0xFF : 0x00);
+    renderer.setRenderMode(mode);
+    if (!decoder->decodeToFramebuffer(imagePath, renderer, config)) {
+      renderer.setRenderMode(GfxRenderer::BW);
+      return false;
+    }
+    if (mode == GfxRenderer::GRAYSCALE_LSB)
+      renderer.copyGrayscaleLsbBuffers();
+    else
+      renderer.copyGrayscaleMsbBuffers();
+  }
+
+  renderer.displayGrayBuffer(TURN_OFF_SCREEN_AFTER_SLEEP_REFRESH);
+  renderer.setRenderMode(GfxRenderer::BW);
+  return true;
 }
 
 void hideOverlayBatteryStrip(const GfxRenderer& renderer) {
@@ -828,12 +885,28 @@ void SleepActivity::renderCoverSleepScreen() const {
     return (this->*renderNoCoverSleepScreen)();
   }
 
+  const bool noCoverFilter =
+      SETTINGS.sleepScreenCoverFilter == CrossPointSettings::SLEEP_SCREEN_COVER_FILTER::NO_FILTER;
   const bool absolute = renderer.supportsAbsoluteGrayscale() &&
-                        SETTINGS.sleepScreenCoverFilter == CrossPointSettings::SLEEP_SCREEN_COVER_FILTER::NO_FILTER;
-  bool cropped = SETTINGS.sleepScreenCoverMode == CrossPointSettings::SLEEP_SCREEN_COVER_MODE::CROP;
-  std::string coverBmpPath = SleepCoverAssets::cachedCoverPathFor(path, cropped, absolute);
-  if (coverBmpPath.empty() && SleepCoverAssets::prepareFullCoverForPath(path, cropped, &renderer, absolute)) {
+                        noCoverFilter;
+  const bool cropped = SETTINGS.sleepScreenCoverMode == CrossPointSettings::SLEEP_SCREEN_COVER_MODE::CROP;
+  const std::string coverJpegPath = noCoverFilter ? SleepCoverAssets::prepareJpegCoverForPath(path) : std::string{};
+  const bool useQualityJpeg = absolute && !coverJpegPath.empty();
+  if (!useQualityJpeg && !coverJpegPath.empty() && renderJpegSleepCover(coverJpegPath, cropped, renderer)) {
+    return;
+  }
+
+  std::string coverBmpPath = SleepCoverAssets::cachedCoverPathFor(path, cropped, absolute, useQualityJpeg);
+  if (coverBmpPath.empty() &&
+      SleepCoverAssets::prepareFullCoverForPath(path, cropped, &renderer, absolute, useQualityJpeg)) {
+    coverBmpPath = SleepCoverAssets::cachedCoverPathFor(path, cropped, absolute, useQualityJpeg);
+  }
+  if (coverBmpPath.empty() && useQualityJpeg) {
+    if (!coverJpegPath.empty() && renderJpegSleepCover(coverJpegPath, cropped, renderer)) return;
     coverBmpPath = SleepCoverAssets::cachedCoverPathFor(path, cropped, absolute);
+    if (coverBmpPath.empty() && SleepCoverAssets::prepareFullCoverForPath(path, cropped, &renderer, absolute)) {
+      coverBmpPath = SleepCoverAssets::cachedCoverPathFor(path, cropped, absolute);
+    }
   }
   if (coverBmpPath.empty()) {
     return (this->*renderNoCoverSleepScreen)();

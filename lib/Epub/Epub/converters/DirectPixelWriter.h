@@ -15,6 +15,7 @@
 struct DirectPixelWriter {
   uint8_t* fb;
   GfxRenderer::RenderMode mode;
+  bool absoluteGrayPlanes;
   uint16_t displayWidthBytes;  // Runtime framebuffer stride (X4: 100, X3: 99)
   // Active write target: for tiled grayscale, fb is the band scratch, originY is
   // the band's top physical row, and clipRows is the band height. Off-band
@@ -38,6 +39,7 @@ struct DirectPixelWriter {
     originY = renderer.getWriteOriginY();
     clipRows = renderer.getWriteRows();
     mode = renderer.getRenderMode();
+    absoluteGrayPlanes = renderer.grayPlanesAreAbsolute();
     displayWidthBytes = renderer.getDisplayWidthBytes();
 
     const int phyW = renderer.getDisplayWidth();
@@ -112,12 +114,12 @@ struct DirectPixelWriter {
         state = true;
         break;
       case GfxRenderer::GRAYSCALE_MSB:
-        draw = (pixelValue == 1 || pixelValue == 2);
-        state = false;
+        draw = absoluteGrayPlanes || pixelValue == 1 || pixelValue == 2;
+        state = absoluteGrayPlanes && !(pixelValue == 3 || pixelValue == 2);
         break;
       case GfxRenderer::GRAYSCALE_LSB:
-        draw = (pixelValue == 1);
-        state = false;
+        draw = absoluteGrayPlanes || pixelValue == 1;
+        state = absoluteGrayPlanes && !(pixelValue == 3 || pixelValue == 1);
         break;
       default:
         return;

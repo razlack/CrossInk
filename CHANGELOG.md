@@ -22,6 +22,7 @@
 
 ### Changed
 
+- EPUB JPEG sleep covers use a row-based four-tone quality conversion on panels with absolute grayscale support.
 - Dashboard book covers now use a taller 3:5 portrait ratio.
 - Set Power short-press and long-press to Sleep, Wake, or Sleep/Wake separately; holding Power can always wake the device. Chord shortcuts and the home button can also now sleep the device.
 - Brightness and warmth gestures now respond while you drag, with longer swipes allowing finer one-point adjustments.
@@ -52,6 +53,9 @@
 
 ### Fixed
 
+- Apply Inx's JPEG quality tone curve to grayscale EPUB sleep covers.
+- Use Inx's four-tone quality error diffusion for grayscale EPUB sleep covers.
+- Clear the display before grayscale book-cover sleep screens on supported panels, reducing residual shading in the cover image.
 - File Transfer choices no longer appear preselected when opened on a touch device.
 - EPUB paragraphs now inherit first-line indentation from HTML and body styles while retaining paragraph-level overrides.
 - Saved clipping lists now show a scrollbar when more clippings are available below the visible rows.

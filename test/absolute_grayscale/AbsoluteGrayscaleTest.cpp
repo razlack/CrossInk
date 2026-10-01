@@ -29,6 +29,11 @@ TEST(AbsoluteGrayscale, DitherersReportScratchAllocationFailure) {
   rowAllocationToFail = -1;
   EXPECT_FALSE(failedFloyd.isValid());
 
+  rowAllocationToFail = 0;
+  QualityFourToneDitherer failedQuality(8);
+  rowAllocationToFail = -1;
+  EXPECT_FALSE(failedQuality.isValid());
+
   EXPECT_FALSE(AtkinsonDitherer(0).isValid());
   EXPECT_FALSE(Atkinson1BitDitherer(-1).isValid());
   EXPECT_FALSE(FloydSteinbergDitherer(0).isValid());
@@ -36,9 +41,11 @@ TEST(AbsoluteGrayscale, DitherersReportScratchAllocationFailure) {
   AtkinsonDitherer atkinson(8);
   Atkinson1BitDitherer oneBit(8);
   FloydSteinbergDitherer floyd(8);
+  QualityFourToneDitherer quality(8);
   EXPECT_TRUE(atkinson.isValid());
   EXPECT_TRUE(oneBit.isValid());
   EXPECT_TRUE(floyd.isValid());
+  EXPECT_TRUE(quality.isValid());
 }
 
 TEST(AbsoluteGrayscale, FullPlanesIncludeBlackWhiteAndBothGrayLevels) {
@@ -90,4 +97,22 @@ TEST(AbsoluteGrayscale, NonDitheredPngQuantizationUsesFourEvenLevels) {
   EXPECT_EQ(quantizeGrayTo4Level(191), 2);
   EXPECT_EQ(quantizeGrayTo4Level(192), 3);
   EXPECT_EQ(quantizeGrayTo4Level(255), 3);
+}
+
+TEST(AbsoluteGrayscale, JpegQualityToneMatchesInxBoundariesAndMidtones) {
+  EXPECT_EQ(applyJpegQualityTone(12, 12, 12, 0, 0), 0);
+  EXPECT_EQ(applyJpegQualityTone(218, 218, 218, 0, 0), 255);
+  EXPECT_EQ(applyJpegQualityTone(48, 48, 48, 0, 0), 37);
+  EXPECT_EQ(applyJpegQualityTone(96, 96, 96, 0, 0), 95);
+  EXPECT_EQ(applyJpegQualityTone(128, 128, 128, 0, 0), 120);
+  EXPECT_EQ(applyJpegQualityTone(160, 160, 160, 0, 0), 171);
+}
+
+TEST(AbsoluteGrayscale, InxQualityDitherUsesQualityToneThresholds) {
+  EXPECT_EQ(QualityFourToneDitherer::quantize(19), 0);
+  EXPECT_EQ(QualityFourToneDitherer::quantize(20), 1);
+  EXPECT_EQ(QualityFourToneDitherer::quantize(157), 1);
+  EXPECT_EQ(QualityFourToneDitherer::quantize(158), 2);
+  EXPECT_EQ(QualityFourToneDitherer::quantize(247), 2);
+  EXPECT_EQ(QualityFourToneDitherer::quantize(248), 3);
 }

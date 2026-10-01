@@ -67,8 +67,22 @@ bool prepareTxt(const Txt& txt) {
   return txt.generateCoverBmp();
 }
 
+std::string prepareJpegCoverForPath(const std::string& bookPath) {
+  if (!FsHelpers::hasEpubExtension(bookPath)) {
+    return {};
+  }
+
+  Epub epub(bookPath, "/.crosspoint");
+  if (!epub.load(/*buildIfMissing=*/false, /*skipLoadingCss=*/true, Epub::XLocationLoadMode::Skip)) {
+    return {};
+  }
+
+  std::string coverPath;
+  return epub.prepareCoverJpeg(coverPath) ? coverPath : std::string{};
+}
+
 bool prepareFullCoverForPath(const std::string& bookPath, const bool cropped, const GfxRenderer* renderer,
-                             bool imageLevels) {
+                             bool imageLevels, bool jpegQuality) {
   if (bookPath.empty()) {
     return false;
   }
@@ -78,7 +92,7 @@ bool prepareFullCoverForPath(const std::string& bookPath, const bool cropped, co
     if (!epub.load(/*buildIfMissing=*/false, /*skipLoadingCss=*/true, Epub::XLocationLoadMode::Skip)) {
       return false;
     }
-    return epub.generateCoverBmp(cropped, renderer, readerFontIdForRenderer(renderer), imageLevels);
+    return epub.generateCoverBmp(cropped, renderer, readerFontIdForRenderer(renderer), imageLevels, jpegQuality);
   }
   if (FsHelpers::hasXtcExtension(bookPath)) {
     Xtc xtc(bookPath, "/.crosspoint");
@@ -163,10 +177,10 @@ std::string reusableCoverPathFor(const std::string& bookPath) {
   return {};
 }
 
-std::string cachedCoverPathFor(const std::string& bookPath, const bool cropped, bool imageLevels) {
+std::string cachedCoverPathFor(const std::string& bookPath, const bool cropped, bool imageLevels, bool jpegQuality) {
   std::string coverPath;
   if (FsHelpers::hasEpubExtension(bookPath)) {
-    coverPath = Epub(bookPath, "/.crosspoint").getCoverBmpPath(cropped, imageLevels);
+    coverPath = Epub(bookPath, "/.crosspoint").getCoverBmpPath(cropped, imageLevels, jpegQuality);
   } else if (FsHelpers::hasXtcExtension(bookPath)) {
     coverPath = Xtc(bookPath, "/.crosspoint").getCoverBmpPath();
   } else if (FsHelpers::hasTxtExtension(bookPath) || FsHelpers::hasMarkdownExtension(bookPath)) {

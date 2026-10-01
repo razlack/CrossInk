@@ -208,6 +208,7 @@ struct BmpConvertCtx {
   int outWidth;
   int outHeight;
   bool oneBit;
+  bool jpegQuality;
   int bytesPerRow;
   bool needsScaling;
   uint32_t scaleX_fp;  // source pixels per output pixel, 16.16 fixed-point
@@ -233,9 +234,11 @@ struct BmpConvertCtx {
   uint8_t* smoothOutRow;
 
   uint8_t* bmpRow;
+  uint8_t* qualityRow;
 
   std::unique_ptr<AtkinsonDitherer> atkinsonDitherer;
   std::unique_ptr<FloydSteinbergDitherer> fsDitherer;
+  std::unique_ptr<QualityFourToneDitherer> qualityDitherer;
   std::unique_ptr<Atkinson1BitDitherer> atkinson1BitDitherer;
 
   bool error;
@@ -344,18 +347,25 @@ static void writeOutputRow(BmpConvertCtx* ctx, const uint8_t* srcRow, int outY) 
     if (ctx->atkinson1BitDitherer) ctx->atkinson1BitDitherer->nextRow();
   } else {
     for (int x = 0; x < ctx->outWidth; x++) {
-      const uint8_t gray = adjustPixel(srcRow[x]);
       uint8_t twoBit;
-      if (ctx->atkinsonDitherer) {
+      if (ctx->qualityDitherer) {
+        const uint8_t gray = srcRow[x];
+        const uint8_t leftGray = x > 0 ? srcRow[x - 1] : gray;
+        const uint8_t rightGray = x + 1 < ctx->outWidth ? srcRow[x + 1] : gray;
+        twoBit = ctx->qualityDitherer->processPixel(applyJpegQualityTone(gray, leftGray, rightGray, x, outY), x);
+      } else if (ctx->atkinsonDitherer) {
+        const uint8_t gray = adjustPixel(srcRow[x]);
         twoBit = ctx->atkinsonDitherer->processPixel(gray, x);
       } else if (ctx->fsDitherer) {
-        twoBit = ctx->fsDitherer->processPixel(gray, x);
+        twoBit = ctx->fsDitherer->processPixel(adjustPixel(srcRow[x]), x);
       } else {
-        twoBit = quantize(gray, x, outY);
+        twoBit = quantize(adjustPixel(srcRow[x]), x, outY);
       }
       ctx->bmpRow[(x * 2) / 8] |= (twoBit << (6 - ((x * 2) % 8)));
     }
-    if (ctx->atkinsonDitherer)
+    if (ctx->qualityDitherer)
+      ctx->qualityDitherer->nextRow();
+    else if (ctx->atkinsonDitherer)
       ctx->atkinsonDitherer->nextRow();
     else if (ctx->fsDitherer)
       ctx->fsDitherer->nextRow();
@@ -437,6 +447,15 @@ static void finishSmoothUpscale(BmpConvertCtx* ctx) {
 
 // Flush one scaled output row from Y-axis accumulators and advance currentOutY
 static void flushScaledRow(BmpConvertCtx* ctx) {
+  if (ctx->qualityDitherer) {
+    for (int x = 0; x < ctx->outWidth; x++) {
+      ctx->qualityRow[x] = (ctx->rowCount[x] > 0) ? (ctx->rowAccum[x] / ctx->rowCount[x]) : 0;
+    }
+    writeOutputRow(ctx, ctx->qualityRow, ctx->currentOutY);
+    ctx->currentOutY++;
+    return;
+  }
+
   memset(ctx->bmpRow, 0, ctx->bytesPerRow);
 
   if (USE_8BIT_OUTPUT && !ctx->oneBit) {
@@ -594,7 +613,8 @@ static bool isProgressiveJpeg(FsFile& file) {
 
 // Internal implementation with configurable target size and bit depth
 bool JpegToBmpConverter::jpegFileToBmpStreamInternal(FsFile& jpegFile, Print& bmpOut, int targetWidth, int targetHeight,
-                                                     bool oneBit, bool crop, bool adaptiveContain, bool imageLevels) {
+                                                     bool oneBit, bool crop, bool adaptiveContain, bool imageLevels,
+                                                     bool jpegQuality) {
   if (ESP.getFreeHeap() < MIN_FREE_HEAP) {
     LOG_ERR("JPG", "Not enough heap for JPEG decoder (%u free, need %u)", ESP.getFreeHeap(), MIN_FREE_HEAP);
     return false;
@@ -670,6 +690,7 @@ bool JpegToBmpConverter::jpegFileToBmpStreamInternal(FsFile& jpegFile, Print& bm
   ctx.outWidth = outWidth;
   ctx.outHeight = outHeight;
   ctx.oneBit = oneBit;
+  ctx.jpegQuality = jpegQuality && !oneBit && !USE_8BIT_OUTPUT;
   ctx.bytesPerRow = bytesPerRow;
   ctx.needsScaling = needsScaling;
   ctx.scaleX_fp = geometry.scaleX_fp;
@@ -688,6 +709,7 @@ bool JpegToBmpConverter::jpegFileToBmpStreamInternal(FsFile& jpegFile, Print& bm
   } else if (needsScaling) {
     scratchBytes += static_cast<size_t>(outWidth) * sizeof(uint32_t) * 2;
   }
+  if (ctx.jpegQuality) scratchBytes += static_cast<size_t>(outWidth);
   // Keep the conversion in one arena slab. Growing would request another full slab,
   // which can fail on a fragmented heap even when the next buffer is tiny.
   scratchBytes += 128;
@@ -710,6 +732,14 @@ bool JpegToBmpConverter::jpegFileToBmpStreamInternal(FsFile& jpegFile, Print& bm
   if (!ctx.bmpRow) {
     LOG_ERR("JPG", "OOM: BMP row buffer");
     return false;
+  }
+
+  if (ctx.jpegQuality) {
+    ctx.qualityRow = arenaNewArray<uint8_t>(scratchArena, static_cast<size_t>(outWidth));
+    if (!ctx.qualityRow) {
+      LOG_ERR("JPG", "OOM: JPEG quality row buffer");
+      return false;
+    }
   }
 
   if (smoothUpscale) {
@@ -738,6 +768,12 @@ bool JpegToBmpConverter::jpegFileToBmpStreamInternal(FsFile& jpegFile, Print& bm
     ctx.atkinson1BitDitherer = makeUniqueNoThrow<Atkinson1BitDitherer>(outWidth);
     if (!ctx.atkinson1BitDitherer || !ctx.atkinson1BitDitherer->isValid()) {
       LOG_ERR("JPG", "OOM: Atkinson1BitDitherer");
+      return false;
+    }
+  } else if (ctx.jpegQuality) {
+    ctx.qualityDitherer = makeUniqueNoThrow<QualityFourToneDitherer>(outWidth);
+    if (!ctx.qualityDitherer || !ctx.qualityDitherer->isValid()) {
+      LOG_ERR("JPG", "OOM: quality four-tone ditherer");
       return false;
     }
   } else if (!USE_8BIT_OUTPUT) {
@@ -784,11 +820,13 @@ bool JpegToBmpConverter::jpegFileToBmpStreamInternal(FsFile& jpegFile, Print& bm
 }
 
 // Core function: Convert JPEG file to 2-bit BMP (uses default target size)
-bool JpegToBmpConverter::jpegFileToBmpStream(FsFile& jpegFile, Print& bmpOut, bool crop, bool imageLevels) {
+bool JpegToBmpConverter::jpegFileToBmpStream(FsFile& jpegFile, Print& bmpOut, bool crop, bool imageLevels,
+                                             bool jpegQuality) {
   // Use runtime display dimensions (swapped for portrait cover sizing)
   const int targetWidth = display.getDisplayHeight();
   const int targetHeight = display.getDisplayWidth();
-  return jpegFileToBmpStreamInternal(jpegFile, bmpOut, targetWidth, targetHeight, false, crop, false, imageLevels);
+  return jpegFileToBmpStreamInternal(jpegFile, bmpOut, targetWidth, targetHeight, false, crop, false, imageLevels,
+                                     jpegQuality);
 }
 
 // Convert to 1-bit BMP (black and white only, no grays) for fast home screen rendering

@@ -147,9 +147,11 @@ class Epub {
   const std::string& getLanguage() const;
   // True when parsed EPUB metadata identifies a cover image. Requires load().
   bool hasCoverImage() const;
-  std::string getCoverBmpPath(bool cropped = false, bool imageLevels = false) const;
+  // Extracts and caches the original JPEG cover without rasterizing it.
+  bool prepareCoverJpeg(std::string& outPath) const;
+  std::string getCoverBmpPath(bool cropped = false, bool imageLevels = false, bool jpegQuality = false) const;
   bool generateCoverBmp(bool cropped = false, const GfxRenderer* renderer = nullptr, int readerFontId = 0,
-                        bool imageLevels = false) const;
+                        bool imageLevels = false, bool jpegQuality = false) const;
   std::string getThumbBmpPath() const;
   // Deprecated compatibility wrapper; forwards to getThumbBmpPath(0, height).
   [[deprecated("use getThumbBmpPath(int width, int height)")]]

@@ -1206,14 +1206,17 @@ bool Epub::hasCoverImage() const {
   return bookMetadataCache && bookMetadataCache->isLoaded() && !bookMetadataCache->coreMetadata.coverItemHref.empty();
 }
 
-std::string Epub::getCoverBmpPath(bool cropped, bool imageLevels) const {
-  const auto coverFileName = std::string("cover") + (cropped ? "_crop" : "") + (imageLevels ? "_absolute" : "");
+std::string Epub::getCoverBmpPath(bool cropped, bool imageLevels, bool jpegQuality) const {
+  const auto coverFileName = std::string("cover") + (cropped ? "_crop" : "") + (imageLevels ? "_absolute" : "") +
+                             (jpegQuality ? "_quality" : "");
   return cachePath + "/" + coverFileName + ".bmp";
 }
 
-bool Epub::generateCoverBmp(bool cropped, const GfxRenderer* renderer, const int readerFontId, bool imageLevels) const {
+bool Epub::generateCoverBmp(bool cropped, const GfxRenderer* renderer, const int readerFontId, bool imageLevels,
+                            bool jpegQuality) const {
+  jpegQuality = jpegQuality && imageLevels;
   // Already generated, return true
-  if (Storage.exists(getCoverBmpPath(cropped, imageLevels).c_str())) {
+  if (Storage.exists(getCoverBmpPath(cropped, imageLevels, jpegQuality).c_str())) {
     return true;
   }
 
@@ -1240,19 +1243,19 @@ bool Epub::generateCoverBmp(bool cropped, const GfxRenderer* renderer, const int
     }
 
     FsFile coverBmp;
-    if (!Storage.openFileForWrite("EBP", getCoverBmpPath(cropped, imageLevels), coverBmp)) {
+    if (!Storage.openFileForWrite("EBP", getCoverBmpPath(cropped, imageLevels, jpegQuality), coverBmp)) {
       coverJpg.close();
       return false;
     }
     releaseReaderSdFontCachesBeforeCoverDecode(renderer, readerFontId, "cover JPG decode");
-    const bool success = JpegToBmpConverter::jpegFileToBmpStream(coverJpg, coverBmp, cropped, imageLevels);
+    const bool success = JpegToBmpConverter::jpegFileToBmpStream(coverJpg, coverBmp, cropped, imageLevels, jpegQuality);
     // Explicitly close() files before leaving the converter path.
     coverJpg.close();
     coverBmp.close();
 
     if (!success) {
       LOG_ERR("EBP", "Failed to generate BMP from cover image");
-      Storage.remove(getCoverBmpPath(cropped, imageLevels).c_str());
+      Storage.remove(getCoverBmpPath(cropped, imageLevels, jpegQuality).c_str());
     }
     return success;
   }
@@ -1269,7 +1272,7 @@ bool Epub::generateCoverBmp(bool cropped, const GfxRenderer* renderer, const int
     }
 
     FsFile coverBmp;
-    if (!Storage.openFileForWrite("EBP", getCoverBmpPath(cropped, imageLevels), coverBmp)) {
+    if (!Storage.openFileForWrite("EBP", getCoverBmpPath(cropped, imageLevels, jpegQuality), coverBmp)) {
       coverPng.close();
       return false;
     }
@@ -1281,7 +1284,7 @@ bool Epub::generateCoverBmp(bool cropped, const GfxRenderer* renderer, const int
 
     if (!success) {
       LOG_ERR("EBP", "Failed to generate BMP from PNG cover image");
-      Storage.remove(getCoverBmpPath(cropped, imageLevels).c_str());
+      Storage.remove(getCoverBmpPath(cropped, imageLevels, jpegQuality).c_str());
     }
     return success;
   }
@@ -1390,6 +1393,19 @@ bool Epub::ensureCachedCoverImage(const std::string& coverImageHref, std::string
   }
 
   return true;
+}
+
+bool Epub::prepareCoverJpeg(std::string& outPath) const {
+  outPath.clear();
+  if (!bookMetadataCache || !bookMetadataCache->isLoaded()) {
+    return false;
+  }
+
+  const std::string& coverImageHref = bookMetadataCache->coreMetadata.coverItemHref;
+  if (!FsHelpers::hasJpgExtension(coverImageHref)) {
+    return false;
+  }
+  return ensureCachedCoverImage(coverImageHref, outPath);
 }
 
 bool Epub::generateThumbBmpInternal(int width, int height, const bool adaptiveContain, const GfxRenderer* renderer,

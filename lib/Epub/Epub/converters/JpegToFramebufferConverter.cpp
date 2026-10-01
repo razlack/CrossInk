@@ -7,7 +7,9 @@
 #include <Logging.h>
 #include <Memory.h>
 #include <MemoryBudget.h>
+#include <BitmapHelpers.h>
 
+#include <algorithm>
 #include <cstddef>
 
 #include "DirectPixelWriter.h"
@@ -195,6 +197,7 @@ int jpegDrawCallback(JPEGDRAW* pDraw) {
   if (stride <= 0 || blockH <= 0 || validW <= 0) return 1;
 
   const bool useDithering = ctx->config->useDithering;
+  const bool useJpegQualityTone = ctx->config->useJpegQualityTone;
   bool caching = ctx->caching;
   const int32_t fineScaleFPX = ctx->fineScaleFPX;
   const int32_t invScaleFPX = ctx->invScaleFPX;
@@ -228,6 +231,13 @@ int jpegDrawCallback(JPEGDRAW* pDraw) {
 
   if (dstYStart >= dstYEnd || dstXStart >= dstXEnd) return 1;
 
+  const auto quantizeOutputPixel = [&](const uint8_t gray, const int outX, const int outY) {
+    const uint8_t corrected = useJpegQualityTone ? applyJpegQualityTone(gray, gray, gray, outX, outY) : gray;
+    if (useDithering) return applyBayerDither4Level(corrected, outX, outY);
+    const uint8_t level = corrected / 85;
+    return level > 3 ? static_cast<uint8_t>(3) : level;
+  };
+
   // Pre-compute orientation and render-mode state once per callback invocation
   DirectPixelWriter pw;
   pw.init(renderer);
@@ -258,14 +268,9 @@ int jpegDrawCallback(JPEGDRAW* pDraw) {
       const uint8_t* row = &pixels[(dstY - blockY) * stride];
       for (int dstX = dstXStart; dstX < dstXEnd; dstX++) {
         const int outX = cfgX + dstX;
-        uint8_t gray = row[dstX - blockX];
-        uint8_t dithered;
-        if (useDithering) {
-          dithered = applyBayerDither4Level(gray, outX, outY);
-        } else {
-          dithered = gray / 85;
-          if (dithered > 3) dithered = 3;
-        }
+        const int localX = dstX - blockX;
+        const uint8_t gray = row[localX];
+        const uint8_t dithered = quantizeOutputPixel(gray, outX, outY);
         pw.writePixel(outX, dithered);
         if (caching) cw.writePixel(outX, dithered);
       }
@@ -316,15 +321,8 @@ int jpegDrawCallback(JPEGDRAW* pDraw) {
 
         int top = ((int)row0[lx0] * fxInv + (int)row0[lx1] * fx) >> FP_SHIFT;
         int bot = ((int)row1[lx0] * fxInv + (int)row1[lx1] * fx) >> FP_SHIFT;
-        uint8_t gray = (uint8_t)((top * fyInv + bot * fy) >> FP_SHIFT);
-
-        uint8_t dithered;
-        if (useDithering) {
-          dithered = applyBayerDither4Level(gray, outX, outY);
-        } else {
-          dithered = gray / 85;
-          if (dithered > 3) dithered = 3;
-        }
+        const uint8_t gray = static_cast<uint8_t>((top * fyInv + bot * fy) >> FP_SHIFT);
+        const uint8_t dithered = quantizeOutputPixel(gray, outX, outY);
         pw.writePixel(outX, dithered);
         if (caching) cw.writePixel(outX, dithered);
       }
@@ -339,15 +337,8 @@ int jpegDrawCallback(JPEGDRAW* pDraw) {
 
         int top = ((int)row0[lx0] * fxInv + (int)row0[lx0 + 1] * fx) >> FP_SHIFT;
         int bot = ((int)row1[lx0] * fxInv + (int)row1[lx0 + 1] * fx) >> FP_SHIFT;
-        uint8_t gray = (uint8_t)((top * fyInv + bot * fy) >> FP_SHIFT);
-
-        uint8_t dithered;
-        if (useDithering) {
-          dithered = applyBayerDither4Level(gray, outX, outY);
-        } else {
-          dithered = gray / 85;
-          if (dithered > 3) dithered = 3;
-        }
+        const uint8_t gray = static_cast<uint8_t>((top * fyInv + bot * fy) >> FP_SHIFT);
+        const uint8_t dithered = quantizeOutputPixel(gray, outX, outY);
         pw.writePixel(outX, dithered);
         if (caching) cw.writePixel(outX, dithered);
       }
@@ -365,15 +356,8 @@ int jpegDrawCallback(JPEGDRAW* pDraw) {
 
         int top = ((int)row0[lx0] * fxInv + (int)row0[lx1] * fx) >> FP_SHIFT;
         int bot = ((int)row1[lx0] * fxInv + (int)row1[lx1] * fx) >> FP_SHIFT;
-        uint8_t gray = (uint8_t)((top * fyInv + bot * fy) >> FP_SHIFT);
-
-        uint8_t dithered;
-        if (useDithering) {
-          dithered = applyBayerDither4Level(gray, outX, outY);
-        } else {
-          dithered = gray / 85;
-          if (dithered > 3) dithered = 3;
-        }
+        const uint8_t gray = static_cast<uint8_t>((top * fyInv + bot * fy) >> FP_SHIFT);
+        const uint8_t dithered = quantizeOutputPixel(gray, outX, outY);
         pw.writePixel(outX, dithered);
         if (caching) cw.writePixel(outX, dithered);
       }
@@ -398,15 +382,8 @@ int jpegDrawCallback(JPEGDRAW* pDraw) {
       int lx = (srcFxFP >> FP_SHIFT) - blockX;
       if (lx < 0) lx = 0;
       if (lx >= validW) lx = validW - 1;
-      uint8_t gray = row[lx];
-
-      uint8_t dithered;
-      if (useDithering) {
-        dithered = applyBayerDither4Level(gray, outX, outY);
-      } else {
-        dithered = gray / 85;
-        if (dithered > 3) dithered = 3;
-      }
+      const uint8_t gray = row[lx];
+      const uint8_t dithered = quantizeOutputPixel(gray, outX, outY);
       pw.writePixel(outX, dithered);
       if (caching) cw.writePixel(outX, dithered);
     }
