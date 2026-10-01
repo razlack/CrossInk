@@ -12,7 +12,7 @@ constexpr int coverWidthForHeight(const int coverHeight) {
 constexpr ThemeMetrics makeValues() {
   ThemeMetrics v = LyraMetrics::values;
   v.homeTopPadding = 50;
-  v.homeCoverHeight = 583;
+  v.homeCoverHeight = 600;
   v.homeCoverTileHeight = 690;
   v.homeRecentBooksCount = 1;
   v.homeContinueReadingInMenu = false;
@@ -24,7 +24,7 @@ constexpr ThemeMetrics makeValues() {
 constexpr ThemeMetrics values = makeValues();
 constexpr int homeCoverWidth = coverWidthForHeight(values.homeCoverHeight);
 constexpr int homeCoverImageWidth = homeCoverWidth;
-constexpr int homeCoverImageHeight = 525;
+constexpr int homeCoverImageHeight = 600;
 }  // namespace MinimalMetrics
 
 struct GlobalReadingStats;

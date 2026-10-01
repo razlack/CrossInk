@@ -22,6 +22,7 @@
 
 ### Changed
 
+- Dashboard book covers now use a taller 3:5 portrait ratio.
 - Set Power short-press and long-press to Sleep, Wake, or Sleep/Wake separately; holding Power can always wake the device. Chord shortcuts and the home button can also now sleep the device.
 - Brightness and warmth gestures now respond while you drag, with longer swipes allowing finer one-point adjustments.
 - Text drawing resolves clipping and screen rotation once per glyph, reducing work when painting menus and book pages.

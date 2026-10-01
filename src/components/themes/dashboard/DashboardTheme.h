@@ -17,8 +17,8 @@ constexpr ThemeMetrics makeValues() {
 }
 
 constexpr ThemeMetrics values = makeValues();
-constexpr int homeCoverImageWidth = 296;
-constexpr int homeCoverImageHeight = 444;
+constexpr int homeCoverImageWidth = 267;
+constexpr int homeCoverImageHeight = (homeCoverImageWidth * 5) / 3;
 }  // namespace DashboardMetrics
 
 class DashboardTheme : public MinimalTheme {

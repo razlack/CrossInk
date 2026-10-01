@@ -1267,7 +1267,7 @@ void LibraryActivity::buildGrid(UiApp::ScreenType& screen) {
       std::max<int16_t>(1, std::min<int16_t>(cellHeight - 2 * GRID_SELECTION_OUTER_INSET,
                                              (cellWidth - 2 * GRID_SELECTION_OUTER_INSET) * 3 / 2));
   const int16_t coverWidth =
-      std::max<int16_t>(1, std::min<int16_t>(cellWidth - 2 * GRID_SELECTION_OUTER_INSET, coverHeight * 2 / 3));
+      std::max<int16_t>(1, std::min<int16_t>(cellWidth - 2 * GRID_SELECTION_OUTER_INSET, coverHeight * 3 / 5));
   if (coverWidth != gridCoverWidth || coverHeight != gridCoverHeight) {
     gridCoverWidth = coverWidth;
     gridCoverHeight = coverHeight;

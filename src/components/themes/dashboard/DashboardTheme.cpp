@@ -63,7 +63,7 @@ Rect coverRectForScreen(const GfxRenderer& renderer, const Rect& rect) {
   const int statsW = isWideScreen(renderer) ? kStatsColumnWidthWide : kStatsColumnWidth;
   const int maxCoverW = renderer.getScreenWidth() - inset * 2 - statsW - kCoverStatsGap;
   const int coverW = std::min(DashboardMetrics::homeCoverImageWidth, maxCoverW);
-  const int coverH = std::min(DashboardMetrics::homeCoverImageHeight, (coverW * 3) / 2);
+  const int coverH = std::min(DashboardMetrics::homeCoverImageHeight, (coverW * 5) / 3);
   return Rect{inset + (gpio.deviceIsX3() ? kPairInwardShiftX3 : 0), rect.y + kTopInset, coverW, coverH};
 }
 
