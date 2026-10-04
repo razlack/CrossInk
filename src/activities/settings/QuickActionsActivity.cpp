@@ -58,8 +58,12 @@ std::vector<QuickActions::Trigger> availableTriggers() {
 
 std::vector<uint8_t> availableActions() {
   std::vector<uint8_t> actions;
-  actions.reserve(QuickActions::shortcutActionOrder.size());
+  actions.reserve(QuickActions::shortcutActionOrder.size() + 2);
   for (const auto action : QuickActions::shortcutActionOrder) {
+    const auto rawAction = static_cast<uint8_t>(action);
+    if (QuickActions::isQuickActionSlotActionAvailable(rawAction)) actions.push_back(rawAction);
+  }
+  for (const auto action : {CrossPointSettings::SET_REFRESH_1_PAGE, CrossPointSettings::SET_REFRESH_15_PAGES}) {
     const auto rawAction = static_cast<uint8_t>(action);
     if (QuickActions::isQuickActionSlotActionAvailable(rawAction)) actions.push_back(rawAction);
   }

@@ -283,7 +283,10 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
     SLEEP_ONLY = 34,
     WAKE_ONLY = 35,
     HOME_READER = 36,
-    SHORT_PWRBTN_COUNT
+    SHORT_PWRBTN_COUNT = 37,
+    // Quick Actions-only choices; keep these outside the physical shortcut range.
+    SET_REFRESH_1_PAGE = 37,
+    SET_REFRESH_15_PAGES = 38,
   };
 
   // Power + Up side-button chord actions. Keep this order aligned with

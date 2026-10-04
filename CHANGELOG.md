@@ -9,6 +9,7 @@
 - TTF font support on ESP32-S3 devices. Whole-point sizes from 8pt to 22pt will be automatically available.
 - Library replaces Recent Books with a searchable book list, and adds various book metadata sort options.
 - Assign Library to power, long-press, button-chord, Home-button, or Quick Actions shortcuts to open the book list directly.
+- Set the reader's refresh frequency to 1 or 15 pages from Quick Actions.
 - Customize the top and bottom reader status bars separately, including item positions and progress bars, in EPUB, TXT, and XTC books. Each bar can be previewed where it appears while reading.
 - Assign actions to upward and downward slides along either screen edge on touch devices.
 - View a selected book's reading stats from its Library or File Browser action menu.

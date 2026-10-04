@@ -107,6 +107,8 @@ inline bool isActionAvailable(const uint8_t action) {
   if (action == CrossPointSettings::TOGGLE_FRONTLIGHT) return Frontlight.present();
   if (action == CrossPointSettings::TOGGLE_TOUCHSCREEN) return gpio.hasTouch();
   if (action == CrossPointSettings::HOME_READER) return !gpio.hasTouch();
+  if (action == CrossPointSettings::SET_REFRESH_1_PAGE || action == CrossPointSettings::SET_REFRESH_15_PAGES)
+    return true;
   if (action < CrossPointSettings::QUICK_ACTION_SLOT_ACTION_COUNT) {
     return action != CrossPointSettings::TOGGLE_TILT_PAGE_TURN || supportsTiltPageTurn();
   }
@@ -132,6 +134,8 @@ inline StrId actionLabel(const uint8_t action) {
   if (action == CrossPointSettings::NEARBY_POSITION_SYNC) return StrId::STR_NEARBY_POSITION_SYNC;
   if (action == CrossPointSettings::LIBRARY) return StrId::STR_LIBRARY;
   if (action == CrossPointSettings::HOME_READER) return StrId::STR_HOME_READER;
+  if (action == CrossPointSettings::SET_REFRESH_1_PAGE) return StrId::STR_PAGES_1;
+  if (action == CrossPointSettings::SET_REFRESH_15_PAGES) return StrId::STR_PAGES_15;
   return StrId::STR_HOME_BUTTON_LOCK;
 }
 

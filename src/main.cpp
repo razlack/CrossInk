@@ -685,6 +685,14 @@ bool handleGlobalPowerButtonAction(const CrossPointSettings::SHORT_PWRBTN action
       delay(1000);
       activityManager.requestUpdate();
       return true;
+    case CrossPointSettings::SHORT_PWRBTN::SET_REFRESH_1_PAGE:
+      SETTINGS.refreshFrequency = CrossPointSettings::REFRESH_1;
+      activityManager.persistGlobalSettings();
+      return true;
+    case CrossPointSettings::SHORT_PWRBTN::SET_REFRESH_15_PAGES:
+      SETTINGS.refreshFrequency = CrossPointSettings::REFRESH_15;
+      activityManager.persistGlobalSettings();
+      return true;
     default:
       return false;
   }

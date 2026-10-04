@@ -777,6 +777,12 @@ class SimulatorSmokeTest {
         QuickActions::actionLabel(CrossPointSettings::LIBRARY) != StrId::STR_LIBRARY) {
       fail("Library is missing from Quick Actions choices");
     }
+    if (!QuickActions::isQuickActionSlotActionAvailable(CrossPointSettings::SET_REFRESH_1_PAGE) ||
+        QuickActions::actionLabel(CrossPointSettings::SET_REFRESH_1_PAGE) != StrId::STR_PAGES_1 ||
+        !QuickActions::isQuickActionSlotActionAvailable(CrossPointSettings::SET_REFRESH_15_PAGES) ||
+        QuickActions::actionLabel(CrossPointSettings::SET_REFRESH_15_PAGES) != StrId::STR_PAGES_15) {
+      fail("Refresh frequency choices are missing or mislabeled in Quick Actions");
+    }
 
     const uint8_t savedTrackReadingStats = SETTINGS.trackReadingStats;
     SETTINGS.trackReadingStats = 0;
