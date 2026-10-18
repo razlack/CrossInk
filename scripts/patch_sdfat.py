@@ -35,7 +35,8 @@ PATCHES = (
 
 
 def digest(path):
-    return hashlib.sha256(path.read_bytes()).hexdigest()
+    content = path.read_bytes().replace(b"\r\n", b"\n")
+    return hashlib.sha256(content).hexdigest()
 
 
 def is_within(path, root):
@@ -73,7 +74,7 @@ def apply_patches(project_dir, dependency_dir):
             raise RuntimeError("Unrecognized SdFat source: " + relative)
         patch = project / "scripts" / "sdfat_patches" / name
         # Validate the entire set before changing any dependency files.
-        command = ["git", "apply", "--check"]
+        command = ["git", "apply", "--check", "--ignore-whitespace"]
         if current == patched:
             command.append("--reverse")
         result = subprocess.run(command + [str(patch)], cwd=dependency,
@@ -83,12 +84,15 @@ def apply_patches(project_dir, dependency_dir):
         if current == upstream:
             pending.append((patch, target, patched))
     for patch, target, expected in pending:
-        subprocess.run(["git", "apply", str(patch)], cwd=dependency, env=process_env, check=True)
+        subprocess.run(
+            ["git", "apply", "--ignore-whitespace", str(patch)],
+            cwd=dependency,
+            env=process_env,
+            check=True,
+        )
         if digest(target) != expected:
             raise RuntimeError("Unexpected patched SdFat source: " + target.name)
         print("Applied SdFat patch: " + patch.name)
-
-
 def patch_selected_dependency(env):
     # PioArduino's SDK-only pass clears lib_deps; the later app pass resolves them.
     if env.get("ARDUINO_LIB_COMPILE_FLAG") == "Build":
