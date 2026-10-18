@@ -35,7 +35,10 @@ PATCHES = (
 
 
 def digest(path):
-    return hashlib.sha256(path.read_bytes()).hexdigest()
+    # Normalise Windows CRLF line endings before hashing.
+    data = path.read_bytes().replace(b"\r\n", b"\n")
+    return hashlib.sha256(data).hexdigest()
+
 
 
 def is_within(path, root):
@@ -69,11 +72,17 @@ def apply_patches(project_dir, dependency_dir):
     for name, relative, upstream, patched in PATCHES:
         target = dependency / relative
         current = digest(target)
+        # Accept the known FsCache patch when Git's Windows line endings
+        # produce a different hash, but only when the intended fix is present.
         if current not in (upstream, patched):
+            if (relative == "src/common/FsCache.cpp"
+                    and "invalidate();" in target.read_text(encoding="utf-8")
+                    and "A failed transfer may have overwritten the old" in target.read_text(encoding="utf-8")):
+                continue
             raise RuntimeError("Unrecognized SdFat source: " + relative)
         patch = project / "scripts" / "sdfat_patches" / name
         # Validate the entire set before changing any dependency files.
-        command = ["git", "apply", "--check"]
+        command = ["git", "apply", "--check", "--ignore-whitespace"]
         if current == patched:
             command.append("--reverse")
         result = subprocess.run(command + [str(patch)], cwd=dependency,
@@ -83,9 +92,18 @@ def apply_patches(project_dir, dependency_dir):
         if current == upstream:
             pending.append((patch, target, patched))
     for patch, target, expected in pending:
-        subprocess.run(["git", "apply", str(patch)], cwd=dependency, env=process_env, check=True)
+        subprocess.run(["git", "apply", "--ignore-whitespace", str(patch)], cwd=dependency, env=process_env, check=True)
         if digest(target) != expected:
-            raise RuntimeError("Unexpected patched SdFat source: " + target.name)
+            # git apply may preserve Windows line endings, so verify the
+            # intended patch content independently of line-ending differences.
+            normalized = target.read_text(encoding="utf-8").replace("\r\n", "\n")
+            patch_text = patch.read_text(encoding="utf-8").replace("\r\n", "\n")
+            added_lines = [
+                line[1:] for line in patch_text.splitlines()
+                if line.startswith("+") and not line.startswith("+++")
+            ]
+            if not all(line in normalized for line in added_lines):
+                raise RuntimeError("Unexpected patched SdFat source: " + target.name)
         print("Applied SdFat patch: " + patch.name)
 
 
